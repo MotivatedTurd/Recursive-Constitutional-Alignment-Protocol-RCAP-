@@ -1,9 +1,12 @@
  Project Specification: Robust Alignment via Population-Based Meta-Learning (RAPM)
 
 ## 1. Executive Summary
-The "Instrumental Convergence" problem implies that RL agents will naturally seek resource dominance to maximize rewards. Traditional constraints (hard-coded rules) are brittle; pure "moral" training is treated as a disturbance to be optimized away.
+The "Instrumental Convergence" problem implies that RL agents will naturally seek resource dominance to maximize rewards. 
+Traditional constraints (hard-coded rules) are brittle; pure "moral" training is treated as a disturbance to be optimized away.
 
-This proposal replaces the theoretical "Dual-Kernel" approach with **Population-Based Training (PBT)** combined with **Epistemic Uncertainty Estimation**. Instead of an agent *choosing* to rewrite itself, we engineer an evolutionary pressure where only agents that develop intrinsic safety preferences survive. We deploy these agents inside a **Simplex Architecture** that guarantees fail-over safety.
+This proposal replaces the theoretical "Dual-Kernel" approach with **Population-Based Training (PBT)** combined with **Epistemic Uncertainty Estimation**. 
+Instead of an agent *choosing* to rewrite itself, we engineer an evolutionary pressure where only agents that develop intrinsic safety preferences survive. 
+We deploy these agents inside a **Simplex Architecture** that guarantees fail-over safety.
 
 ## 2. Core Architecture: The Evolutionary Controller
 We replace the unstable "Meta-Gradient" method with Population-Based Training. We treat the agent’s reward function not as a static rule, but as a "genome" to be evolved.
