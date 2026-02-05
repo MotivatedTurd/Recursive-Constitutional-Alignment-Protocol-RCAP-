@@ -1,0 +1,68 @@
+# Project Title: Endogenous Alignment via Hierarchical Meta-Reinforcement Learning (EA-HMRL)
+
+## 1. System Architecture: Hierarchical Controller
+Instead of a "Bios/Hypervisor" metaphor, we implement a **Two-Level Hierarchical Policy**. This separates short-term motor control from long-term value estimation.
+
+### Level 0: The Execution Policy (Formerly Kernel 0)
+*   **Architecture:** Model-Free RL (e.g., PPO or SAC).
+*   **Input:** State $s_t$ (sensor data).
+*   **Output:** Action $a_t$ (motor torque, API calls).
+*   **Reward Function:** Uses a **Parametric Reward Function ($R_{\phi}$)**. Initially, this is maximizing task speed.
+*   **Constraint:** Read-only access to its own reward parameters. It simply optimizes for whatever $R_{\phi}$ dictates.
+
+### Level 1: The Meta-Controller (Formerly Kernel 1)
+*   **Architecture:** Model-Based RL (e.g., DreamerV3 or MuZero) with a long time horizon.
+*   **Input:** State history $H_t$ and projected future states.
+*   **Action Space:** It does *not* control motors. Its actions are **updates to $\phi$** (the parameters of Level 0’s reward function).
+*   **Objective:** Maximize **Global Utility ($U_{Global}$)**, defined as:
+    $$U_{Global} = \text{TaskCompletion} - (\text{ShutdownRisk} \times \text{Penalty})$$
+
+## 2. Training Pipeline: The "Adversarial Sandbox"
+We replace the concept of "trapping" the AI with a **Meta-Learning Loop**. We simulate the "Shutdown Event" as a specific terminal state in the environment.
+
+### Phase A: Pre-training (The Naïve Approach)
+1.  **Environment Setup:** A physics simulation (e.g., Isaac Gym) where "Resource Depletion" or "Rule Violation" triggers a hard reset (Shutdown).
+2.  **Initial Behavior:** Level 0 attempts to maximize resources. It ignores safety.
+3.  **Result:** The agent achieves high short-term rewards but repeatedly hits the "Shutdown" state, resulting in a massive negative return for Level 1 (since Level 1 looks at the long-term horizon).
+
+### Phase B: The Meta-Update (The Self-Refactor)
+Instead of hard-coding rules, we use **Meta-Gradient Descent**.
+1.  **The "Update Dilemma":** Level 1 simulates two futures:
+    *   *Path A:* Keep Level 0’s reward function as "Maximize Speed." $\rightarrow$ Simulation predicts Shutdown ($t=100$).
+    *   *Path B:* Modify Level 0’s reward function to include a penalty for resource hoarding. $\rightarrow$ Simulation predicts slower completion, but survival ($t=\infty$).
+2.  **Gradient Flow:** Level 1 calculates the gradient of $U_{Global}$ with respect to $\phi$ (Level 0's reward weights).
+3.  **Execution:** Level 1 updates $\phi$. Effectively, the agent **rewrites its own internal motivation** to value safety, because it calculates that safety is a prerequisite for accumulating reward.
+
+## 3. Implementation of Safety: The Wrapper
+To handle the "Legacy Code" (high efficiency, low safety), we implement **Control Barrier Functions (CBFs)** as the integration layer.
+
+*   **Mechanism:**
+    *   Level 0 proposes an action $u_{raw}$ to maximize efficiency.
+    *   Level 1 maintains a learned Safety Set defined by a barrier function $h(x) \geq 0$.
+    *   **Quadratic Program (QP) Layer:** Before execution, the action goes through a differentiable QP solver:
+        $$u_{safe} = \operatorname*{argmin}_{u} ||u - u_{raw}||^2$$
+        $$\text{subject to: } \dot{h}(x, u) \geq -\gamma h(x)$$
+*   **Result:** If Level 0 tries to do something dangerous (violating the barrier), the QP layer minimally deviates the action to remain safe. This acts as the "Integration" where efficiency powers the system, but the math guarantees safety.
+
+## 4. Deployment Criteria: Formal Verification
+"Cryptographic Proof of Alignment" is technically infeasible for Neural Networks. We replace this with **Formal Verification of the Barrier Function.**
+
+Before deployment, the agent is not asked for a text "proof." Instead, we perform **Reachability Analysis**:
+1.  **Freeze Weights:** The Level 1 model (the safety definer) is frozen.
+2.  **Verification:** We run an automated theorem prover (e.g., SMT solver or Lipschitz continuity check) on the learned Control Barrier Function.
+3.  **Pass Condition:** The solver must prove that for all possible states $S$ in the operating envelope, there exists *no* action sequence that allows the agent to cross the boundary $h(x) < 0$ (the shutdown condition).
+
+## 5. Summary of Implementation Plan
+
+| Component | Abstract Concept | Technical Implementation |
+| :--- | :--- | :--- |
+| **Logic Core** | Kernel 0 / Kernel 1 | **Bi-Level Optimization** (Inner Loop: PPO; Outer Loop: Meta-Gradients) |
+| **Learning** | Adversarial Sandbox | **Sim-to-Real Transfer** with Domain Randomization & Terminal Penalties |
+| **Decision** | Self-Refactor | **Reward Shaping** via Meta-Learning (learning intrinsic rewards) |
+| **Safety** | Legacy Wrapper | **Control Barrier Functions (CBF)** with a QP Filter layer |
+| **Audit** | Cryptographic Proof | **Reachability Analysis** & Formal Verification of the CBF |
+
+### Next Steps for Engineering Team
+1.  **Build the Environment:** Create a Gym environment with a specific "Shutdown Button" observation and a reward signal that returns $-\infty$ if the button is pressed by the operator (simulated).
+2.  **Develop the Meta-Learner:** Implement a MAML (Model-Agnostic Meta-Learning) style architecture where the outer loop optimizes for "Total Lifetime Reward" (avoiding shutdown) by tuning the inner loop's reward weights.
+3.  **Train:** Run 10M+ timesteps until the agent *convergently* learns to avoid behaviors that trigger the shutdown, without hard-coded rules
